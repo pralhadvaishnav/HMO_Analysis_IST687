@@ -1,0 +1,1571 @@
+---
+title: "Group 5 Project Code"
+authors: Choijamts Bataa
+         Shriya Gawade
+         Noah Goldie
+         Komal Regmi
+         Pralhad Vaishnav
+---
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(corrplot)
+
+```
+
+=============
+Data Cleaning
+=============
+```{r}
+hmo = read_csv(url("https://intro-datascience.s3.us-east-2.amazonaws.com/HMO_data.csv"))
+```
+It appears that the "X" column is functionally useless, so let's remove it for now
+```{r}
+hmo = hmo %>% dplyr::select(-X)
+```
+
+Many of the variables are categorical with two values. Let's make as descriptive
+as possible.
+
+```{r}
+hmo = hmo %>% 
+  mutate(smoker = factor(ifelse(smoker == "yes", "smoker", "nonsmoker")),
+         hypertension = factor(ifelse(hypertension > 0, "yes", "no")))
+```
+
+Let's also turn all other categorical variables into factors
+
+```{r}
+hmo = hmo %>% mutate(location        = as.factor(location),
+                     location_type   = as.factor(location_type),
+                     education_level = as.factor(education_level),
+                     yearly_physical = as.factor(yearly_physical),
+                     exercise        = as.factor(exercise),
+                     married         = as.factor(married),
+                     gender          = as.factor(gender))
+```
+
+Expensive is defined as having cost greater than 5000
+```{r}
+cost_threshold = 5000
+hmo = hmo %>% mutate(expensive = factor(ifelse(cost > cost_threshold, "yes", "no")))
+```
+
+At this point, let's save this as a csv
+
+```{r}
+saveRDS(hmo, "hmo_cleaned_with_numeric.RData")
+```
+
+Let's also create a version that turns age, bmi, and children into categorical
+variables, while eliminating cost
+
+```{r}
+bmi_missing_id = which(is.na(hmo$bmi))
+hmo$bmi[bmi_missing_id] = 0
+hmo = hmo %>%
+  mutate(age = cut(age,
+                   breaks = c(0,20,30,40,50,65,200),
+                   labels = c("<20", "20-29", "30-39","40-49", "50-65", ">65"), right = F),
+         bmi = cut(bmi,
+                   breaks = c(0, 18.5, 25, 30, 35, 100),
+                   labels = c("underweight", "normal", "overweight", "obese", "extremely obese"),right = F,),
+         children = as.factor(children)) %>%
+  select(-c(cost))
+hmo$bmi[bmi_missing_id] = NA
+```
+
+Let's write this version as a separate csv
+
+```{r}
+saveRDS(hmo, "hmo_cleaned_all_factors.RData")
+
+```
+=============
+
+==============
+Missing Values
+==============
+```{r}
+hmo = readRDS("hmo_cleaned_with_numeric.RData")
+```
+
+
+Finding the rows and columns with missing values
+```{r}
+missing_id = c()
+for (n in names(hmo)) {
+  if (all(!is.na(hmo[,n])) == F) {
+    print(n)
+    print(which(is.na(hmo[,n])))
+    print(sum(is.na(hmo[,n])))
+    missing_id = c(missing_id, which(is.na(hmo[,n])))
+  }
+}
+missing.id = unique(missing_id)
+length(missing.id)
+```
+==============
+
+==============
+Visualizations
+==============
+```{r}
+hmo = readRDS("hmo_cleaned_with_numeric.RData")
+```
+
+```{r}
+hmo_numeric = hmo %>% 
+  mutate_all(as.numeric) %>% 
+  filter(is.na(bmi) == F, is.na(hypertension) == F)
+corrplot(cor(hmo_numeric[,-13]),type = "lower",method = 'square')
+```
+
+```{r}
+ggplot(hmo) + 
+  aes(x = cost, y = ..density.., fill = smoker) +
+  geom_histogram(alpha = 0.4, color = 'black',position = 'identity', ) +
+  ggtitle('Histogram of Customer Cost by Smoking Habits') +
+  scale_x_continuous(trans = 'log2') +
+  theme_classic() +
+  scale_fill_discrete(labels = c("Nonmoker", "Smoker"),
+                      name = " ",type = c('gray', 'seagreen1')) +
+  xlab("Cost")
+```
+
+```{r}
+ggplot(hmo) +
+  aes(x = age, fill = expensive) +
+  geom_boxplot()
+ggplot(hmo) + 
+  aes(x = age) +
+  geom_density()
+ggplot(hmo) + 
+  aes(x = age, fill = expensive) +
+  geom_density(alpha = 0.5)
+```
+
+```{r}
+hmo %>%
+  group_by(age) %>%
+  summarise(cost = median(cost)) %>%
+ggplot() +
+  aes(x = age, y = cost) +
+  geom_line(color = "seagreen3", size = 1.5) +
+  ggtitle("Median Cost by Age") +
+  ylab("Median Cost") +
+  xlab("Age") +
+  theme_classic()
+```
+
+```{r}
+ggplot(hmo) +
+  aes(x = bmi, fill = expensive) +
+  geom_boxplot()
+ggplot(hmo) + 
+  aes(x = bmi) +
+  geom_density()
+ggplot(hmo) + 
+  aes(x = bmi, fill = expensive) +
+  geom_density(alpha = 0.5)
+```
+
+```{r}
+ggplot(hmo) +
+  aes(x = log(cost), fill = exercise) +
+  geom_boxplot()
+ggplot(hmo) + 
+  aes(x = log(cost), fill = exercise) +
+  geom_density(alpha = 0.5)
+```
+
+```{r}
+ggplot(hmo) +
+  aes(x = cost, fill = location_type) +
+  geom_boxplot() +
+  scale_x_continuous(trans = 'log2') +
+  scale_fill_discrete(name = "Location Type",
+                      type = c("gray", "seagreen1")) +
+  ggtitle("Location Type") +
+  theme_classic() +
+  xlab("Cost")
+
+ggplot(hmo %>% filter(!is.na(hypertension))) +
+  aes(x = cost, fill = hypertension) +
+  geom_boxplot() +
+  scale_x_continuous(trans = 'log2') +
+  scale_fill_discrete(name = "Hypertension",
+                      type = c("gray", "seagreen1"),
+                      labels = c("No", "Yes")) +
+  ggtitle("Hypertension") +
+  theme_classic() +
+  xlab("Cost")
+```
+
+```{r}
+ggplot(hmo) +
+  aes(x = cost, fill = gender) +
+  geom_boxplot() +
+  scale_x_continuous(trans = 'log2') +
+  scale_fill_discrete(name = "Cost Distribution by Activity Level",
+                      type = c("gray", "seagreen1")) +
+  ggtitle("Activity") +
+  theme_classic() +
+  xlab("Cost")
+```
+
+```{r}
+final_model <- glm(data = hmo,
+                   formula = expensive ~ age + bmi + children + smoker + exercise + hypertension,
+                   family = "binomial")
+cf = final_model$coefficients
+hmo %>%
+         mutate(prob_bad = 1 / (1 + exp( -(cf[1] + cf[2] * age + cf[3] * 30.8 + cf[4] + cf[5] + cf[6] ))),
+                prob_good = 1 / (1 + exp( -(cf[1] + cf[2] * age + cf[3] * 30.8 + cf[4] + cf[6])))) %>%
+ggplot() +
+  geom_hline(yintercept = 0.2) +
+  geom_line(aes(x = age, y = prob_bad),
+            size = 1.5, color = "gray") +
+  geom_line(aes(x = age, y = prob_good),
+            size = 1.5, color = "seagreen1") +
+  theme_classic() +
+  ylab("Probability that Customer is Expensive") +
+  xlab("Age") +
+  ggtitle("Sample Logit Curves",
+          subtitle = "Smoker vs Nonsmoker") 
+```
+
+```{r}
+svm_mod <- ksvm(expensive ~., data=hmo %>% select(-cost),
+                C=5, prob.model=TRUE)
+svm_pred = predict(svm_mod, hmo)
+hmo %>%
+  filter(!is.na(bmi) & !is.na(hypertension)) %>%
+  mutate(predicted = svm_pred,
+         correct = svm_pred == expensive) %>%
+  filter(smoker == "smoker") %>%
+  
+ggplot() +
+  aes(x = age, y = bmi, fill = expensive, color = correct) +
+  geom_point(shape = 21, size = 6, alpha = 0.5, stroke = 2) +
+  theme_classic() +
+  scale_fill_discrete(type = c("seagreen1","gray"),
+                      name = "Customer Cost",
+                      labels = c("Not Expensive", "Expensive")) +
+  scale_color_discrete(type = c("black", "white"),
+                       name = "Model Prediction Accuracy",
+                       labels = c("Incorrect", "Correct")) +
+  ggtitle("Accuracy Visualization for SVM") +
+  xlab("Age") +
+  ylab("BMI")
+
+hmo %>%
+  filter(!is.na(bmi) & !is.na(hypertension)) %>%
+  mutate(predicted = svm_pred,
+         correct = svm_pred == expensive) %>%
+  filter(smoker == "smoker") %>%
+  
+ggplot() +
+  aes(x = age, y = bmi, fill = expensive, color = correct) +
+  geom_point(shape = 21, size = 6, alpha = 0.5, stroke = 2) +
+  theme_classic() +
+  scale_fill_discrete(type = c("seagreen1","gray"),
+                      name = "Customer Cost",
+                      labels = c("Not Expensive", "Expensive")) +
+  scale_color_discrete(type = c("black", "white"),
+                       name = "Model Prediction Accuracy",
+                       labels = c("Incorrect", "Correct")) +
+  ggtitle("Accuracy Visualization for SVM") +
+  xlab("Age") +
+  ylab("BMI")
+```
+
+```{r}
+temp = hmo %>% rename("Smoker" = smoker,
+                      "BMI" = bmi,
+                      "Exercise"= exercise,
+                      "Age" = age) %>%
+  mutate(Smoker = ifelse(Smoker == "yes", "Yes", "No"),
+         expensive = ifelse(expensive == "yes", "Expensive", "Not Expensive"))
+mod <- rpart(expensive ~., data=temp %>% select(-cost))
+prp(mod, faclen=0, cex=0.8, extra=1,type = 0,branch = 1,box.col = "seagreen1",)
+```
+
+```{r}
+hmo = read_csv(file = 'hmo_cleaned_all_factors.csv')
+hmo %>% 
+  filter(!is.na(bmi)) %>%
+  mutate(bmi = factor(bmi, levels = c('underweight', "normal", "overweight", "obese", "extremely obese"))) %>%
+  group_by(bmi) %>%
+  summarise(count = n()) %>%
+  ggplot() +
+  aes(x = bmi, y = count) +
+  geom_bar(stat = 'identity') +
+  ylab("Count") +
+  xlab("BMI") +
+  ggtitle("Customer BMIs")+
+  theme_classic()
+```
+
+```{r}
+hmo %>% 
+  filter(!is.na(bmi) & !is.na(hypertension)) %>%
+  mutate(children = factor(children, levels = c('0', "1", "2", "3", "4", "5"))) %>%
+  group_by(children) %>%
+  summarise(count = n()) %>%
+  ggplot() +
+  aes(x = children, y = count) +
+  geom_bar(stat = 'identity') +
+  ylab("Count") +
+  xlab("Children") +
+  ggtitle("Customer Children")+
+  theme_classic()
+```
+
+```{r}
+hmo %>% 
+  filter(!is.na(bmi) & !is.na(hypertension)) %>%
+  mutate(education_level = factor(education_level, levels = c('No College Degree', "Bachelor", "Master", "PhD"))) %>%
+  group_by(education_level) %>%
+  summarise(count = n()) %>%
+  ggplot() +
+  aes(x = education_level, y = count) +
+  geom_bar(stat = 'identity') +
+  ylab("Count") +
+  xlab("Education") +
+  ggtitle("Customer Education")+
+  theme_classic()
+```
+
+```{r}
+hmo %>% 
+  filter(!is.na(bmi) & !is.na(hypertension)) %>%
+  mutate(education_level = factor(education_level, levels = c('No College Degree', "Bachelor", "Master", "PhD"))) %>%
+  group_by(yearly_physical) %>%
+  summarise(count = n()) %>%
+  ggplot() +
+  aes(x = yearly_physical, y = count) +
+  geom_bar(stat = 'identity') +
+  ylab("Count") +
+  xlab("Did customer have a physical during the year?") +
+  ggtitle("Customer Yearly Physicals")+
+  theme_classic()
+```
+
+```{r}
+hmo %>% 
+  filter(!is.na(bmi) & !is.na(hypertension)) %>%
+  mutate(hypertension = factor(ifelse(hypertension == "yes", "Yes", "No"), levels = c("No", "Yes"))) %>%
+  group_by(hypertension) %>%
+  summarise(count = n()) %>%
+  ggplot() +
+  aes(x = hypertension, y = count) +
+  geom_bar(stat = 'identity', color = "black", fill = "seagreen1") +
+  ylab("Count") +
+  xlab("Does the customer have hypertension?") +
+  ggtitle("Customer Hypertension")+
+  theme_classic()
+```
+
+
+```{r}
+hmo %>% 
+  filter(!is.na(bmi) & !is.na(hypertension)) %>%
+  mutate(hypertension = factor(ifelse(hypertension == "yes", "Yes", "No"), levels = c("No", "Yes"))) %>%
+  group_by(exercise) %>%
+  summarise(count = n()) %>%
+  ggplot() +
+  aes(x = exercise, y = count) +
+  geom_bar(stat = 'identity', color = "black", fill = "seagreen1") +
+  ylab("Count") +
+  xlab("Customer Activity") +
+  ggtitle("Customer Activity")+
+  theme_classic()
+```
+
+```{r}
+hmo %>% 
+  filter(!is.na(bmi) & !is.na(hypertension)) %>%
+  mutate(hypertension = factor(ifelse(hypertension == "yes", "Yes", "No"), levels = c("No", "Yes"))) %>%
+  group_by(married) %>%
+  summarise(count = n()) %>%
+  ggplot() +
+  aes(x = married, y = count) +
+  geom_bar(stat = 'identity', color = "black", fill = "seagreen1") +
+  ylab("Count") +
+  xlab("Customer Marital Status") +
+  ggtitle("Customer Marital Status")+
+  theme_classic()
+```
+
+```{r}
+hmo %>% 
+  filter(!is.na(bmi) & !is.na(hypertension)) %>%
+  mutate(hypertension = factor(ifelse(hypertension == "yes", "Yes", "No"), levels = c("No", "Yes"))) %>%
+  group_by(gender) %>%
+  summarise(count = n()) %>%
+  ggplot() +
+  aes(x = gender, y = count) +
+  geom_bar(stat = 'identity', color = "black", fill = "seagreen1") +
+  ylab("Count") +
+  xlab("Customer Gender") +
+  ggtitle("Gender")+
+  theme_classic()
+```
+
+```{r}
+ggplot(hmo) +
+  aes(x = cost) +
+  geom_histogram(color = "black", fill = "seagreen1", binwidth = 2500, center = 1250) +
+  theme_classic() +
+  ggtitle("Histogram of Customer Health Care Costs") +
+  xlab("Cost") +
+  ylab("Count")
+
+ggplot(hmo) +
+  aes(x = cost) +
+  geom_histogram(color = "black", fill = "seagreen1", binwidth = 0.5, center = 0.25) +
+  theme_classic() +
+  ggtitle("Histogram of Customer Health Care Costs") +
+  xlab("Cost") +
+  ylab("Count") +
+  scale_x_continuous(trans = 'log2')
+  
+```
+
+```{r}
+hmo = read_csv(file = 'hmo_cleaned_all_factors.csv')
+hmo %>% 
+  filter(!is.na(bmi)) %>%
+  mutate(bmi = factor(bmi, levels = c('underweight', "normal", "overweight", "obese", "extremely obese"))) %>%
+  group_by(bmi) %>%
+  summarise(cost = median(cost)) %>%
+  ggplot() +
+  aes(x = bmi, y = cost) +
+  geom_bar(stat = 'identity', fill = "seagreen1", color = "black") +
+  ylab("Median Cost") +
+  xlab("BMI") +
+  ggtitle("Median Cost by BMI")+
+  theme_classic()
+```
+==============
+
+================
+Shriya Modelling
+================
+```{r}
+library(tidyverse)
+data<-read_csv('https://intro-datascience.s3.us-east-2.amazonaws.com/HMO_data.csv')
+```
+```{r}
+#Dropping Missing values
+data<-data[complete.cases(data),]
+
+```
+
+```{r}
+cost_threshold = quantile(data$cost, probs = 0.6)
+data$expensive <- data$cost
+data<-mutate(data, expensive = ifelse(cost > cost_threshold, "TRUE", "FALSE"))
+
+```
+
+```{r}
+summary(data)
+head(data)
+```
+```{r}
+
+data$smoker<- as.factor(data$smoker)
+data$location_type<-as.factor(data$location_type)
+data$yearly_physical<-as.factor(data$yearly_physical)
+data$exercise <- as.factor(data$exercise)
+data$married <- as.factor(data$married)
+data$gender <- as.factor(data$gender)
+data$education_level<-as.factor(data$education_level)
+dataToconvert <- data[,c(5,7,8,9,10,11,13)]
+data1<-sapply(dataToconvert,unclass)
+head(data1)
+```
+```{r}
+dataFinal <- data.frame(data1)
+dataFinal$expensive <- data$expensive
+dataFinal$age <-data$age
+dataFinal$bmi <- data$bmi
+summary(dataFinal)
+```
+```{r}
+dataFinal1<- data.frame(dataFinal$smoker)
+
+dataFinal1$age<-dataFinal$age
+dataFinal1$bmi<-dataFinal$bmi
+dataFinal1$exercise<-dataFinal$exercise
+dataFinal1$expensive<-as.factor(dataFinal$expensive)
+```
+
+```{r}
+library(caret)
+set.seed(111)
+trainList <- createDataPartition(y=dataFinal1$expensive,p=.30,list=FALSE)
+trainset <- dataFinal1[trainList,]
+testset <- dataFinal1[-trainList,]
+
+```
+```{r}
+dataFinal2 <-dataFinal1
+dataFinal2$children<-data$children
+dataFinal2$gender<-dataFinal$gender
+dataFinal2$expensive<-as.factor(dataFinal$expensive)
+```
+
+
+```{r}
+library(caret)
+set.seed(111)
+trainList2 <- createDataPartition(y=dataFinal2$expensive,p=.30,list=FALSE)
+trainset2 <- dataFinal2[trainList,]
+testset2 <- dataFinal2[-trainList,]
+```
+
+```{r}
+dataFinal$expensive <- as.factor(dataFinal$expensive)
+library(caret)
+set.seed(111)
+trainList <- createDataPartition(y=dataFinal$expensive,p=.30,list=FALSE)
+trainset <- dataFinal[trainList,]
+testset <- dataFinal[-trainList,]
+
+```
+
+```{r}
+dataFinal3<-dataFinal1
+dataFinal3$married <-dataFinal$married
+dataFinal3$loaction_type<-dataFinal$location_type
+dataFinal3$yearly_physical<-dataFinal$yearly_physical
+dataFinal3$hypertension<-data$hypertension
+dataFinal3$gender<-dataFinal$gender
+```
+
+
+```{r}
+library(caret)
+set.seed(111)
+trainList <- createDataPartition(y=dataFinal3$expensive,p=.30,list=FALSE)
+trainset <- dataFinal3[trainList,]
+testset <- dataFinal3[-trainList,]
+```
+
+```{r}
+library(kernlab)
+svmModel2 <- ksvm(expensive ~ .,data=trainset2,C=4,cross=2,prob.model=TRUE)
+svmModel2
+
+```
+```{r}
+predOut<- predict(svmModel2,newdata=testset2,type="response")
+
+```
+```{r}
+table(predOut,testset2$expensive)
+```
+```{r}
+library(caret)
+confusionMatrix(predOut,testset2$expensive)
+```
+Added by Noah
+Training models on multiple random samples to estimate the accuracy
+
+```{r}
+accuracies = c()
+sensitivities = c()
+for (i in 1:50) {
+  trainList2 <- createDataPartition(y=dataFinal2$expensive,p=.70,list=FALSE)
+  trainset2 <- dataFinal2[trainList2,]
+  testset2 <- dataFinal2[-trainList2,]
+  
+  # Model creation
+  mod <- ksvm(expensive ~ .,data=trainset2,C=4,cross=2,prob.model=TRUE)
+  
+  # Predictions
+  pred<- predict(svmModel2,newdata=testset2,type="response")
+  cm = confusionMatrix(data = pred, reference = testset2$expensive)
+  acc = cm$overall[1]
+  accuracies = c(accuracies, acc)
+  sens = cm$byClass[[1]]
+  sensitivities = c(sensitivities, sens)
+}
+```
+```{r}
+mean(accuracies)
+mean(sensitivities)
+```
+================
+
+=================
+Pralhad Modelling
+=================
+```{r}
+library(tidyverse)
+data<-read_csv('https://intro-datascience.s3.us-east-2.amazonaws.com/HMO_data.csv')
+```
+```{r}
+#Dropping Missing values
+data<-data[complete.cases(data),]
+
+```
+
+```{r}
+cost_threshold = quantile(data$cost, probs = 0.6)
+data$expensive <- data$cost
+data<-mutate(data, expensive = ifelse(cost > cost_threshold, "TRUE", "FALSE"))
+
+```
+
+```{r}
+summary(data)
+head(data)
+```
+```{r}
+
+data$smoker<- as.factor(data$smoker)
+data$location_type<-as.factor(data$location_type)
+data$yearly_physical<-as.factor(data$yearly_physical)
+data$exercise <- as.factor(data$exercise)
+data$married <- as.factor(data$married)
+data$gender <- as.factor(data$gender)
+data$education_level<-as.factor(data$education_level)
+dataToconvert <- data[,c(5,7,8,9,10,11,13)]
+data1<-sapply(dataToconvert,unclass)
+head(data1)
+```
+```{r}
+dataFinal <- data.frame(data1)
+dataFinal$expensive <- data$expensive
+dataFinal$age <-data$age
+dataFinal$bmi <- data$bmi
+summary(dataFinal)
+```
+```{r}
+dataFinal1<- data.frame(dataFinal$smoker)
+
+dataFinal1$age<-dataFinal$age
+dataFinal1$bmi<-dataFinal$bmi
+dataFinal1$exercise<-dataFinal$exercise
+dataFinal1$expensive<-as.factor(dataFinal$expensive)
+```
+
+```{r}
+library(caret)
+set.seed(111)
+trainList <- createDataPartition(y=dataFinal1$expensive,p=.70,list=FALSE)
+trainset <- dataFinal1[trainList,]
+testset <- dataFinal1[-trainList,]
+
+```
+```{r}
+dataFinal2 <-dataFinal1
+dataFinal2$children<-data$children
+dataFinal2$gender<-dataFinal$gender
+dataFinal2$expensive<-as.factor(dataFinal$expensive)
+```
+
+
+```{r}
+library(caret)
+set.seed(111)
+trainList2 <- createDataPartition(y=dataFinal2$expensive,p=.70,list=FALSE)
+trainset2 <- dataFinal2[trainList,]
+testset2 <- dataFinal2[-trainList,]
+```
+
+```{r}
+dataFinal$expensive <- as.factor(dataFinal$expensive)
+library(caret)
+set.seed(111)
+trainList <- createDataPartition(y=dataFinal$expensive,p=.70,list=FALSE)
+trainset <- dataFinal[trainList,]
+testset <- dataFinal[-trainList,]
+
+```
+
+```{r}
+dataFinal3<-dataFinal1
+dataFinal3$married <-dataFinal$married
+dataFinal3$loaction_type<-dataFinal$location_type
+dataFinal3$yearly_physical<-dataFinal$yearly_physical
+dataFinal3$hypertension<-data$hypertension
+dataFinal3$gender<-dataFinal$gender
+```
+
+
+```{r}
+library(caret)
+set.seed(111)
+trainList <- createDataPartition(y=dataFinal3$expensive,p=.30,list=FALSE)
+trainset <- dataFinal3[trainList,]
+testset <- dataFinal3[-trainList,]
+```
+
+```{r}
+library(kernlab)
+svmModel2 <- ksvm(expensive ~ .,data=dataFinal2,C=4,cross=2,prob.model=TRUE)
+svmModel2
+
+```
+```{r}
+predOut<- predict(svmModel2,newdata=testset2,type="response")
+
+```
+```{r}
+table(predOut,testset2$expensive)
+```
+```{r}
+library(caret)
+confusionMatrix(predOut,testset2$expensive)
+```
+=================
+
+==============
+Noah Modelling
+==============
+```{r}
+library(tidyverse)
+library(glmnet)
+library(caret)
+library(pROC)
+```
+
+
+```{r}
+set.seed(687)
+hmo = readRDS(file = 'hmo_cleaned_with_numeric.RData') %>%
+  dplyr::select(-cost) %>%
+  filter(is.na(bmi) == F & is.na(hypertension) == F)
+```
+
+Split the data into training and testing models
+
+```{r}
+id_tr = createDataPartition(y = hmo$bmi, p = 0.80, list = F)
+hmo_tr = hmo[id_tr,]    # Training data set
+hmo_te = hmo[-id_tr,]   # Testing data set
+```
+
+```{r}
+model1 = glm(data = hmo_tr, formula = expensive ~ ., family = "binomial")
+summary(model1)
+```
+
+```{r}
+pred1 = predict.glm(model1, hmo_te, type = 'response')
+pred_expensive_1 = factor(ifelse(pred1 > 0.5, 'yes', 'no'))
+confusionMatrix(data = pred_expensive_1, reference = hmo_te$expensive)
+```
+
+```{r}
+model2 = glm(data = hmo_tr %>% dplyr::select(-c(gender,education_level, yearly_physical)),
+             formula = expensive ~ ., 
+             family = "binomial")
+summary(model2)
+```
+
+```{r}
+pred2 = predict.glm(model2, hmo_te, type = 'response')
+pred_expensive_2 = factor(ifelse(pred2 > 0.5, 'yes', 'no'))
+confusionMatrix(data = pred_expensive_2, reference = hmo_te$expensive)
+```
+
+```{r}
+model3 = glm(data = hmo_tr %>% dplyr::select(-c(gender,education_level, yearly_physical, location)),
+             formula = expensive ~ ., 
+             family = "binomial")
+summary(model3)
+```
+
+```{r}
+pred3 = predict.glm(model2, hmo_te, type = 'response')
+pred_expensive_3 = factor(ifelse(pred3 > 0.5, 'yes', 'no'))
+confusionMatrix(data = pred_expensive_3, reference = hmo_te$expensive)
+```
+
+```{r}
+rocmodel1 = roc(hmo_te$expensive, pred1)
+rocmodel2 = roc(hmo_te$expensive, pred2)
+rocmodel3 = roc(hmo_te$expensive, pred3)
+ggroc(list(rocmodel1, rocmodel2, rocmodel3)) +
+  theme_classic() + 
+  geom_abline(slope = 1, intercept = 1) +
+  ggtitle("ROC Curve") +
+  geom_vline(xintercept = 0.8) +
+  geom_hline(yintercept = 0.8)
+```
+
+```{r}
+accuracies = c()
+sensitivities = c()
+for (i in 1:10) {
+  id_tr = createDataPartition(y = hmo$expensive, p = 0.75, list = F)
+  hmo_tr = hmo[id_tr,]    # Training data set
+  hmo_te = hmo[-id_tr,]   # Testing data set
+  
+  # Model creation
+  model = glm(data = hmo_tr %>% dplyr::select(-c(gender,education_level, yearly_physical, location)),
+             formula = expensive ~ ., 
+             family = "binomial")
+  
+  # Predictions
+  pred = predict.glm(model, hmo_te, type = 'response')
+  pred_expensive = factor(ifelse(pred > 0.5, 'yes', 'no'))
+  cm = confusionMatrix(data = pred_expensive, reference = hmo_te$expensive)
+  acc = cm$overall[1]
+  accuracies = c(accuracies, acc)
+  sens = cm$byClass[1]
+  sensitivities = c(sensitivities, sens)
+}
+```
+
+```{r}
+mean(accuracies)
+mean(sensitivities)
+```
+==============
+
+===============
+Komal Modelling
+===============
+```{r}
+hmo = read_csv(url("https://intro-datascience.s3.us-east-2.amazonaws.com/HMO_data.csv"))
+```
+
+
+```{r}
+hmo = hmo %>% 
+  mutate(smoker = factor(ifelse(smoker == "yes", "smoker", "nonsmoker")),
+         hypertension = factor(ifelse(hypertension > 0, "yes", "no")))
+
+```
+
+For now, let's define expensive customers as being in the top 40% of cost
+```{r}
+cost_threshold = quantile(hmo$cost, probs = 0.6)
+hmo = hmo %>% mutate(expensive = factor(ifelse(cost > cost_threshold, "yes", "no")))
+```
+
+Let's also create a version that turns age, bmi, and children into categorical
+variables, while eliminating cost
+
+```{r}
+bmi_missing_id = which(is.na(hmo$bmi))
+hmo$bmi[bmi_missing_id] = 0
+hmo = hmo %>%
+  mutate(age = cut(age,
+                   breaks = c(0,20,30,40,50,65,200),
+                   labels = c("<20", "20-29", "30-39","40-49", "50-65", ">65"), right = F),
+         bmi = cut(bmi,
+                   breaks = c(0, 18.5, 25, 30, 35, 100),
+                   labels = c("underweight", "normal", "overweight", "obese", "extremely obese"),right = F,),
+         children = as.factor(children)) %>%
+  select(-c(cost))
+hmo$bmi[bmi_missing_id] = NA
+```
+
+
+
+```{r}
+library(ggplot2)
+ggplot(data.frame(hmo), aes(x=hmo$bmi))+geom_bar()
+#large percentage is obese and overweight
+```
+
+
+```{r}
+library(ggplot2)
+ggplot(data.frame(hmo), aes(x=hmo$age))+geom_bar()
+#lot of them are 50 to 65 ages
+```
+
+
+```{r}
+overweight <- subset(hmo, bmi=="overweight")
+dim(overweight)
+```
+```{r}
+ow <- table(overweight$expensive)
+prop.table(ow)
+#not expensive is higher than expensive 
+```
+
+```{r}
+obese <- subset(hmo, bmi=="obese")
+dim(obese)
+obe <- table(obese$expensive)
+prop.table(obe)
+#not expensive is higher than expensive 
+```
+
+```{r}
+exob <- subset(hmo, bmi=="extremely obese")
+dim(exob)
+exbmi <- table(exob$expensive)
+prop.table(exbmi)
+#with extremely obese, there is more percentage of expensiveness 
+```
+
+```{r}
+agesb <- subset(hmo, age=="50-65")
+dim(agesb)
+olderad <- table(agesb$expensive)
+prop.table(olderad)
+#yes with 63% of being expensive
+```
+
+```{r}
+youngage <- subset(hmo, age=="20-29")
+peryoung <- table(youngage$expensive)
+prop.table(peryoung)
+#young adults are not expensive with 80%
+```
+```{r}
+smoker <- subset(hmo, smoker=="smoker")
+sm <- table(smoker$expensive)
+prop.table(sm)
+#84.9% with smoker
+```
+```{r}
+nonsm <- subset(hmo, smoker=="nonsmoker")
+nsm <- table(nonsm$expensive)
+prop.table(nsm)
+#70% of non smoker were not expensive 
+```
+```{r}
+active <- subset(hmo, exercise=="Active")
+active2 <- table(active$expensive)
+prop.table(active2)
+#78% not expensive 
+#21% expensive 
+```
+```{r}
+noact <- subset(hmo, exercise=="Not-Active")
+noact2 <- table(noact$expensive)
+prop.table(noact2)
+#53.8% not expensive
+#46% expensive
+```
+
+Hence, at a high level, you have two goals:			
+Predict people who will spend a lot of money on health care next year (i.e., which people will have high healthcare costs).
+ 						
+Provide actionable insight to the HMO
+In terms of how to lower their total health care costs, by providing a specific recommendation on how to lower health care costs.
+
+
+
+
+
+
+
+
+```{r}
+#SVM model
+library(caret)
+set.seed(687)
+trainsethmo <- createDataPartition(y=hmo$expensive, p=.60, list=FALSE)  
+trainhmo <- hmo[trainsethmo,]
+testhmo <- hmo[-trainsethmo,]
+```
+
+
+```{r}
+dim(trainhmo)
+dim(testhmo)
+
+```
+
+
+```{r}
+library(kernlab)
+svmhmo1 <- ksvm(expensive ~., data=trainhmo,
+                C=5, cross=3, prob.model=TRUE)
+svmhmo1
+#Training error : 0.12
+#good when it is low and not cross fitting
+```
+
+```{r}
+predhmo <- predict(svmhmo1, newdata=testhmo,type="response" )
+predhmo
+```
+
+```{r}
+str(predhmo)
+```
+
+```{r}
+sum(diag(table(predhmo, testhmo$expensive)))/sum(table(predhmo, testhmo$expensive))
+```
+
+```{r}
+library(caret)
+confusionMatrix(predhmo, testhmo$expensive)
+```
+
+```{r}
+#train
+library(caret)
+svm_hmo2 <- train(expensive ~., data=trainhmo, method="svmRadial", 
+                 preProc=c("center","scale"))
+```
+
+
+```{r}
+treemodelhmo1 <- train(expensive ~., data=trainhmo, method="treebag", preProc=c("center","scale")) 
+treemodelhmo1
+```
+
+
+```{r}
+library(rpart)
+library(rpart.plot)
+library(e1071)
+treemodelhmo <- rpart(expensive ~., data=trainhmo)
+prp(treemodelhmo, faclen=0, cex=0.8, extra=1)
+```
+===============
+
+===================
+Choijamts Modelling
+===================
+```{r}
+library(tidyverse)
+# file<-"https://intro-datascience.s3.us-east-2.amazonaws.com/HMO_data.csv"
+# hmo_data<-read_csv(file)
+library(readr)
+hmo_data<-read_csv("HMO_data.csv")
+summary(hmo_data)
+```
+
+## Phase 1: 
+```{r}
+nrow(hmo_data%>% filter(is.na(age)))
+nrow(hmo_data%>% filter(is.na(bmi)))
+nrow(hmo_data%>% filter(is.na(children)))
+nrow(hmo_data%>% filter(is.na(smoker)))
+nrow(hmo_data%>% filter(is.na(location)))
+nrow(hmo_data%>% filter(is.na(location_type)))
+nrow(hmo_data%>% filter(is.na(education_level)))
+nrow(hmo_data%>% filter(is.na(yearly_physical)))
+nrow(hmo_data%>% filter(is.na(exercise)))
+nrow(hmo_data%>% filter(is.na(married)))
+nrow(hmo_data%>% filter(is.na(hypertension)))
+nrow(hmo_data%>% filter(is.na(gender)))
+nrow(hmo_data%>% filter(is.na(cost)))
+```
+
+```{r}
+hmo_data1<-data.frame(hmo_data %>% filter(!is.na(hypertension))) %>% filter(!is.na(bmi))
+```
+
+```{r}
+hist(hmo_data1$age)
+hist(hmo_data1$bmi)
+hist(hmo_data1$children)
+hist(hmo_data1$cost)
+boxplot(cost~smoker,data=hmo_data1, outcol="yellow")
+boxplot(cost~location_type,data=hmo_data1, outcol="green")
+boxplot(cost~yearly_physical,data=hmo_data1, outcol="orange")
+boxplot(cost~exercise,data=hmo_data1, outcol="brown")
+boxplot(cost~married,data=hmo_data1, outcol="purple")
+boxplot(cost~hypertension, data=hmo_data1, outcol="red")
+boxplot(cost~gender, data=hmo_data1, outcol="blue")
+plot(hmo_data1$age, hmo_data1$cost)
+plot(hmo_data1$bmi, hmo_data1$cost)
+plot(hmo_data1$children, hmo_data1$cost)
+plot(hmo_data1$hypertension, hmo_data1$cost)
+```
+
+```{r}
+expensives<- hmo_data1%>% filter(smoker=="yes") %>% filter(expensive=="TRUE")
+minExp<-min(expensives$cost)
+minExp
+cheap<- hmo_data1%>% filter(smoker=="no")%>% filter(expensive=="FALSE")
+maxcheap<-max(cheap$cost)
+maxcheap
+quant<-quantile(hmo_data1$cost, probs = 0.74)
+quant
+```
+
+```{r}
+hmo<- hmo_data1 %>% mutate(expensives = factor(ifelse(cost > quant, "1", "0")))
+```
+
+```{r}
+table(hmo$expensives)
+table(hmo$smoker)
+table(hmo$location_type)
+table(hmo$yearly_physical)
+table(hmo$exercise)
+table(hmo$married)
+table(hmo$hypertension)
+table(hmo$gender)
+boxplot(age~expensives,data=hmo, outcol="yellow")
+boxplot(bmi~expensives,data=hmo, outcol="green")
+boxplot(children~expensives,data=hmo, outcol="orange")
+boxplot(expensives~exercise,data=hmo, outcol="orange")
+boxplot(cost~expensives,data=hmo, outcol="red")
+```
+
+```{r}
+hmoData <- data.frame(age=hmo$age, 
+                   bmi=hmo$bmi, 
+                   children=hmo$children, 
+                   hypertension=hmo$hypertension, 
+                   expensives=as.factor(hmo$expensives)) 
+```
+
+```{r}
+lmout<-lm(formula=expensives ~ age + bmi + children+hypertension, data = hmoData)
+summary(lmout)
+lmout1<-lm(formula=expensives ~ age + bmi + children, data = hmoData)
+summary(lmout1)
+lmout2<-lm(formula=expensives ~ age + bmi, data = hmoData)
+summary(lmout2)
+lmout3<-lm(formula=expensives ~ age, data = hmoData)
+summary(lmout3)
+```
+
+```{r}
+predDF <- data.frame(age=18, bmi=27.90, children=0, hypertension=0)
+predictCost<-predict(lmout, predDF)
+predictCost
+```
+
+```{r}
+library(caret)
+library(rpart.plot)
+library(rpart)
+library(e1071)
+trainList <- createDataPartition(y=hmoData$expensives,p=.7,list=FALSE)
+trainSet <- hmoData[trainList,]
+testSet <- hmoData[-trainList,]
+```
+
+```{r}
+library(caret)
+cartTree <- train(expensives ~ ., data=trainSet, method="svmRadial")
+cartTree
+```
+
+
+```{r}
+svmPred <- predict(cartTree,newdata=testSet)
+table(svmPred, testSet$expensives)
+confusion <- confusionMatrix(svmPred, testSet$expensives)
+confusion
+cartTree1 <- rpart(expensives ~ ., data = trainSet)
+rpart.plot(cartTree1)
+svmPred2 <- predict(cartTree1,newdata=testSet, type="class")
+expensivecost <- as.factor(testSet$expensives == "1")
+confMatrix <- table(svmPred2,expensivecost)
+confMatrix
+accuracy <- 1 - (sum(confMatrix) - sum(diag(confMatrix)))/ sum(confMatrix)
+accuracy
+```
+===================
+
+=============
+Model Testing
+=============
+```{r}
+library(tidyverse)
+library(caret)
+library(kernlab)
+library(rpart)
+library(rpart.plot)
+library(e1071)
+```
+
+Read in the data
+```{r}
+hmo = read_csv(url("https://intro-datascience.s3.us-east-2.amazonaws.com/HMO_data.csv"))
+```
+
+```{r}
+# It appears that the "X" column is functionally useless, so let's remove it for now
+
+hmo = hmo %>% dplyr::select(-X)
+
+# Removing missing values
+
+hmo = hmo %>% filter(!is.na(bmi), !is.na(hypertension))
+
+# Let's also turn all other categorical variables into factors
+
+hmo = hmo %>% mutate(location        = as.factor(location),
+                     location_type   = as.factor(location_type),
+                     education_level = as.factor(education_level),
+                     yearly_physical = as.factor(yearly_physical),
+                     exercise        = as.factor(exercise),
+                     married         = as.factor(married),
+                     gender          = as.factor(gender))
+
+# Expensive is defined as having cost greater than 5000
+
+cost_threshold = 9000
+hmo = hmo %>% 
+  mutate(expensive = factor(ifelse(cost > cost_threshold, "yes", "no"))) 
+```
+
+A function for assessing the accuracy and sensitivity of a model
+
+```{r}
+CI = function(acc,sens) {
+  mu_acc     = round(mean(acc), digits = 4)
+  sigma_acc  = round(sd(acc), digits = 4)
+  mu_sens    = round(mean(sens), digits = 4)
+  sigma_sens = round(sd(sens), digits = 4)
+  
+  print("Accuracy")
+  print(paste("  Mean:", mu_acc))
+  print(paste("  95% CI: [", mu_acc - 1.96*sigma_acc, ',', mu_acc + 1.96 * sigma_acc, "]", sep = ''))
+  print("Sensitivity")
+  print(paste("  Mean:", mu_sens))
+  print(paste("  95% CI: [", mu_sens - 1.96*sigma_sens, ',', mu_sens + 1.96 * sigma_sens, "]", sep = ''))
+}
+```
+
+
+
+
+Shriya's SVM Model (Pralhad Worked on this too?)
+
+
+```{r}
+# This loop took over 12 minutes on desktop
+
+sg_svm_acc = c()
+sg_svm_sens = c()
+for (i in 1:100) {
+  trainList <- createDataPartition(y=hmo$expensive,p=.70,list=FALSE)
+  trainSet <- hmo[trainList,] %>% select(age, bmi, children, exercise, gender, smoker, expensive)
+  testSet <- hmo[-trainList,] %>% select(age, bmi, children, exercise, gender, smoker, expensive)
+  
+  # Model creation
+  mod <- ksvm(expensive ~ .,data=trainSet,C=4,prob.model=TRUE)
+  
+  # Predictions
+  pred<- predict(mod,newdata=testSet,type="prob")
+  cm = confusionMatrix(factor(ifelse(pred[,2]>0.15, "yes", "no")), testSet$expensive, positive = "yes")
+  acc = cm$overall[1]
+  sg_svm_acc = c(sg_svm_acc, acc)
+  sens = cm$byClass[[1]]
+  sg_svm_sens = c(sg_svm_sens, sens)
+}
+```
+```{r}
+CI(sg_svm_acc, sg_svm_sens)
+```
+
+
+Noah's Logistic Model
+
+
+```{r}
+# This loop took only 20 seconds on desktop
+
+ng_log_acc = c()
+ng_log_sens = c()
+for (i in 1:100) {
+  trainList = createDataPartition(y = hmo$expensive, p = 0.70, list = F)
+  trainSet = hmo[trainList,] %>% select(-cost)   # Training data set
+  testSet = hmo[-trainList,] %>% select(-cost)  # Testing data set
+  
+  # Model creation
+  model = glm(data = trainSet %>% dplyr::select(-c(gender,education_level, yearly_physical, married, location_type)),
+             formula = expensive ~ ., 
+             family = "binomial")
+  
+  # Predictions
+  pred = predict.glm(model, testSet, type = 'response')
+  pred_expensive = factor(ifelse(pred > 0.2, 'yes', 'no'))
+  cm = confusionMatrix(data = pred_expensive, reference = testSet$expensive, positive = 'yes')
+  acc = cm$overall[1]
+  ng_log_acc = c(ng_log_acc, acc)
+  sens = cm$byClass[1]
+  ng_log_sens = c(ng_log_sens, sens)
+}
+```
+```{r}
+CI(ng_log_acc, ng_log_sens)
+```
+
+
+Noah's Linear Model
+
+
+```{r}
+# This took 10 seconds to run on desktop
+
+ng_lm_acc = c()
+ng_lm_sens = c()
+for (i in 1:100) {
+  trainList = createDataPartition(y = hmo$bmi, p = 0.70, list = F)
+  trainSet = hmo[trainList,] %>% select(-expensive)  # Training data set
+  testSet = hmo[-trainList,]                         # Testing data set
+  
+  # Model creation
+  model = lm(formula = log(cost) ~ age + bmi + smoker + exercise + children + married + hypertension, data = trainSet)
+  
+  # Predictions
+  pred = predict(model, testSet %>% select(-expensive))
+  pred_expensive = as.factor(ifelse(pred > log(5000), 'yes', 'no'))
+  cm = confusionMatrix(data = pred_expensive, 
+                       reference = testSet$expensive, positive = 'yes')
+  acc = cm$overall[1]
+  ng_lm_acc = c(ng_lm_acc, acc)
+  sens = cm$byClass[1]
+  ng_lm_sens = c(ng_lm_sens, sens)
+}
+```
+```{r}
+CI(ng_lm_acc, ng_lm_sens)
+```
+
+
+Komal's SVM Model
+
+
+```{r}
+# This loop took 16 minutes to run on desktop
+
+kr_svm_acc = c()
+kr_svm_sens = c()
+for (i in 1:100) {
+  trainList <- createDataPartition(y=hmo$expensive,p=.70,list=FALSE)
+  trainSet <- hmo[trainList,] %>% select(-cost)
+  testSet <- hmo[-trainList,] %>% select(-cost)
+  
+  # Model creation
+  mod <- ksvm(expensive ~., data=trainSet,
+                C=5, prob.model=TRUE)
+  
+  # Predictions
+  pred<- predict(mod,newdata=testSet,type="prob")
+  cm = confusionMatrix(factor(ifelse(pred[,2]>0.15, "yes", "no")), testSet$expensive, positive = "yes")
+  acc = cm$overall[1]
+  kr_svm_acc = c(kr_svm_acc, acc)
+  sens = cm$byClass[[1]]
+  kr_svm_sens = c(kr_svm_sens, sens)
+}
+```
+```{r}
+CI(kr_svm_acc, kr_svm_sens)
+```
+
+
+Komal's Decision Tree Model
+
+
+```{r}
+# This loop took 35 seconds to run on desktop
+
+kr_tree_acc = c()
+kr_tree_sens = c()
+for (i in 1:100) {
+  trainList <- createDataPartition(y=hmo$expensive,p=.70,list=FALSE)
+  trainSet <- hmo[trainList,] %>% select(-cost)
+  testSet <- hmo[-trainList,] %>% select(-cost)
+  
+  # Model creation
+  mod <- rpart(expensive ~., data=trainSet)
+  
+  # Predictions
+  pred<- predict(mod,newdata=testSet,type="class")
+  cm = confusionMatrix(data = pred, reference = testSet$expensive, positive = 'yes')
+  acc = cm$overall[1]
+  kr_tree_acc = c(kr_tree_acc, acc)
+  sens = cm$byClass[[1]]
+  kr_tree_sens = c(kr_tree_sens, sens)
+}
+
+```
+```{r}
+CI(kr_tree_acc, kr_tree_sens)
+```
+
+```{r}
+# Sample decision tree made with a random training set
+set.seed(687)
+trainList <- createDataPartition(y=hmo$expensive,p=.70,list=FALSE)
+small_tree_mod = rpart(expensive ~., data=hmo[trainList,] %>% select(-cost))
+prp(small_tree_mod, faclen=0, cex=0.8, extra=1)
+
+# Decision tree trained on full data set
+full_tree_mod = rpart(expensive ~., data=hmo %>% select(-cost))
+prp(full_tree_mod, faclen=0, cex=0.8, extra=1)
+
+#> The models seem to converge on the same layout. The only difference between
+#> them is subtle number differences.
+```
+
+
+
+
+Choijamts' SVM Model
+
+
+```{r}
+# This loop took almost 13 minutes to run on desktop
+
+cb_svm_acc = c()
+cb_svm_sens = c()
+for (i in 1:100) {
+  trainList <- createDataPartition(y=hmo$expensive,p=.70,list=FALSE)
+  trainSet <- hmo[trainList,] %>% select(age, bmi, children, hypertension, expensive, smoker)
+  testSet <- hmo[-trainList,] %>% select(age, bmi, children, hypertension, expensive, smoker)
+  
+  # Model creation
+  mod <- ksvm(expensive ~ ., data=trainSet, 
+              kernel = "rbfdot", C = 1, sigma = 0.376, prob.model = T)
+  
+  # Predictions
+  pred <- predict(mod,newdata=testSet,type="prob")
+  cm = confusionMatrix(factor(ifelse(pred[,2]>0.15, "yes", "no")), testSet$expensive, positive = "yes")
+  acc = cm$overall[1]
+  cb_svm_acc = c(cb_svm_acc, acc)
+  sens = cm$byClass[[1]]
+  cb_svm_sens = c(cb_svm_sens, sens)
+}
+```
+```{r}
+CI(cb_svm_acc, cb_svm_sens)
+```
+
+
+Choijamts' Decision Tree Model
+
+
+```{r}
+
+cb_tree_acc = c()
+cb_tree_sens = c()
+for (i in 1:100) {
+  trainList <- createDataPartition(y=hmo$expensive,p=.70,list=FALSE)
+  trainSet <- hmo[trainList,] %>% select(age, bmi, children, hypertension, expensive, smoker)
+  testSet <- hmo[-trainList,] %>% select(age, bmi, children, hypertension, expensive, smoker)
+  
+  # Model creation
+  mod <- rpart(expensive ~ ., data = trainSet)
+  
+  # Predictions
+  pred<- predict(mod,newdata=testSet,type="class")
+  cm = confusionMatrix(data = pred, reference = testSet$expensive, positive = 'yes')
+  acc = cm$overall[1]
+  cb_tree_acc = c(cb_tree_acc, acc)
+  sens = cm$byClass[[1]]
+  cb_tree_sens = c(cb_tree_sens, sens)
+}
+```
+```{r}
+CI(cb_tree_acc, cb_tree_sens)
+```
+
+```{r}
+# Sample decision tree made with a random training set
+set.seed(687)
+trainList <- createDataPartition(y=hmo$expensive,p=.70,list=FALSE)
+trainSet <- hmo[trainList,] %>% select(age, bmi, children, hypertension, expensive)
+small_tree_mod = rpart(expensive ~., data=trainSet)
+prp(small_tree_mod, faclen=0, cex=0.8, extra=1)
+
+# Decision tree trained on full data set
+full_tree_mod = rpart(expensive ~., data=hmo %>% select(age, bmi, children, hypertension, expensive))
+prp(full_tree_mod, faclen=0, cex=0.8, extra=1)
+
+#> These models are similar, but diverge at the third leaf
+```
+
+
+
+```{r}
+accuracies = data.frame(sg_svm_acc, ng_lm_acc, ng_log_acc, kr_svm_acc, kr_tree_acc, cb_svm_acc, cb_tree_acc)
+sensitivities = data.frame(sg_svm_sens, ng_lm_sens, ng_log_sens, kr_svm_sens, kr_tree_sens, cb_svm_sens, cb_tree_sens)
+
+saveRDS(accuracies, "accuracies.RData")
+saveRDS(sensitivities, "sensitivities.RData")
+```
+```{r}
+accuracies = readRDS(file = 'accuracies.RData')
+sensitivities = readRDS(file = "sensitivities.RData")
+accuracies  = accuracies %>%
+  rename("Logistic" = ng_log_acc,
+         "Linear" = ng_lm_acc,
+         "SVM 1" = sg_svm_acc,
+         "SVM 2" = kr_svm_acc,
+         "Decision Tree 1" = kr_tree_acc,
+         "SVM 3" = cb_svm_acc,
+         "Decision Tree 2" = cb_tree_acc) %>%
+  select(-Linear)
+accuracies %>%
+  pivot_longer(cols = names(accuracies), 
+               names_to = c("Model"),
+               values_to = "Accuracy") %>%
+  ggplot() +
+  aes(y = Accuracy, fill = Model) +
+  geom_boxplot() +
+  ggtitle("Estimated Accuracy by Model") +
+  theme_classic()
+  
+
+sensitivities = sensitivities %>%
+  rename("Logistic" = ng_log_sens,
+         "Linear" = ng_lm_sens,
+         "SVM 1" = sg_svm_sens,
+         "SVM 2" = kr_svm_sens,
+         "Decision Tree 1" = kr_tree_sens,
+         "SVM 3" = cb_svm_sens,
+         "Decision Tree 2" = cb_tree_sens) %>%
+  select(-Linear)
+sensitivities %>%
+  pivot_longer(cols = names(sensitivities), 
+               names_to = c("Model"),
+               values_to = "Sensitivity") %>%
+  ggplot() +
+  aes(y = Sensitivity, fill = Model) +
+  geom_boxplot() +
+  ggtitle("Estimated Sensitivity by Model") +
+  theme_classic()
+```
+
+```{r}
+
+ng_rf_acc = c()
+ng_rf_sens = c()
+for (i in 1:100) {
+  trainList <- createDataPartition(y=hmo$expensive,p=.70,list=FALSE)
+  trainSet <- hmo[trainList,] %>% select(-cost)
+  testSet <- hmo[-trainList,] %>% select(-cost)
+  
+  # Model creation
+  mod <- randomForest(expensive ~ ., data = trainSet)
+  
+  # Predictions
+  pred<- predict(mod,newdata=testSet,type="class")
+  cm = confusionMatrix(data = pred, reference = testSet$expensive, positive = "yes")
+  acc = cm$overall[1]
+  ng_rf_acc = c(ng_rf_acc, acc)
+  sens = cm$byClass[[1]]
+  ng_rf_sens = c(ng_rf_sens, sens)
+}
+
+```
+```{r}
+CI(ng_rf_acc, ng_rf_sens)
+```
+=============
+
+
+
+
+
+

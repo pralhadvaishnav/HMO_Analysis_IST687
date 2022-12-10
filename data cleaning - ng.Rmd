@@ -1,0 +1,87 @@
+---
+title: "Cleaning HMO Data"
+---
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+hmo = read_csv(url("https://intro-datascience.s3.us-east-2.amazonaws.com/HMO_data.csv"))
+```
+It appears that the "X" column is functionally useless, so let's remove it for now
+```{r}
+hmo = hmo %>% dplyr::select(-X)
+```
+
+Many of the variables are categorical with two values. Let's make as descriptive
+as possible.
+
+```{r}
+hmo = hmo %>% 
+  mutate(smoker = factor(ifelse(smoker == "yes", "smoker", "nonsmoker")),
+         hypertension = factor(ifelse(hypertension > 0, "yes", "no")))
+```
+
+Let's also turn all other categorical variables into factors
+
+```{r}
+hmo = hmo %>% mutate(location        = as.factor(location),
+                     location_type   = as.factor(location_type),
+                     education_level = as.factor(education_level),
+                     yearly_physical = as.factor(yearly_physical),
+                     exercise        = as.factor(exercise),
+                     married         = as.factor(married),
+                     gender          = as.factor(gender))
+```
+
+Expensive is defined as having cost greater than 5000
+```{r}
+cost_threshold = 5000
+hmo = hmo %>% mutate(expensive = factor(ifelse(cost > cost_threshold, "yes", "no")))
+```
+
+At this point, let's save this as a csv
+
+```{r}
+saveRDS(hmo, "hmo_cleaned_with_numeric.RData")
+```
+
+Let's also create a version that turns age, bmi, and children into categorical
+variables, while eliminating cost
+
+```{r}
+bmi_missing_id = which(is.na(hmo$bmi))
+hmo$bmi[bmi_missing_id] = 0
+hmo = hmo %>%
+  mutate(age = cut(age,
+                   breaks = c(0,20,30,40,50,65,200),
+                   labels = c("<20", "20-29", "30-39","40-49", "50-65", ">65"), right = F),
+         bmi = cut(bmi,
+                   breaks = c(0, 18.5, 25, 30, 35, 100),
+                   labels = c("underweight", "normal", "overweight", "obese", "extremely obese"),right = F,),
+         children = as.factor(children)) %>%
+  select(-c(cost))
+hmo$bmi[bmi_missing_id] = NA
+```
+
+Let's write this version as a separate csv
+
+```{r}
+saveRDS(hmo, "hmo_cleaned_all_factors.RData")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
